@@ -1,0 +1,4 @@
+tinos/Tinos-BoldItalic.ttf
+tinos/Tinos-Bold.ttf
+tinos/Tinos-Italic.ttf
+tinos/Tinos-Regular.ttf

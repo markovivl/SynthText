@@ -7,21 +7,24 @@ Author: Ankush Gupta
 
 from __future__ import division
 import numpy as np
-import matplotlib.pyplot as plt
 import cv2
 import scipy.io as sio
 import h5py
 import os.path as osp
 import multiprocessing as mp
 import traceback, sys
+from numba import jit
 
+@jit(nopython=True)
 def get_seed(sx,sy,ucm):
     n = sx.size
-    for i in xrange(n):
+    for i in range(n):
         if ucm[sx[i]+1,sy[i]+1] == 0:
             return (sy[i],sx[i])
 
-def get_mask(ucm,viz=False):
+        
+#@jit(nopython=False)
+def get_mask(ucm, verbose=False):
     ucm = ucm.copy()
     h,w = ucm.shape[:2]
     mask = np.zeros((h-2,w-2),'float32')
@@ -41,13 +44,10 @@ def get_mask(ucm,viz=False):
         sx,sy = np.where(mask==0)
         seed = get_seed(sx,sy,ucm)
         i += 1
-    print "  > terminated in %d steps"%i
+    if verbose:
+        print("  > terminated in %d steps"%i)
 
-    if viz:
-        plt.imshow(mask)
-        plt.show()
-
-    return mask,np.array(areas),np.array(labels)
+    return {'mask' : mask, 'areas': np.array(areas), 'labels' : np.array(labels)}
 
 def get_mask_parallel(ucm_imname):
     ucm,imname = ucm_imname
@@ -81,7 +81,7 @@ def process_db_parallel(base_dir, th=0.11):
             return "".join(map(chr, self.ucm_h5[self.ucm_h5['names'][0,self.i]][:]))
 
         def __stop__(self):
-            print "DONE"
+            print("DONE")
             self.ucm_h5.close()
             raise StopIteration
 
@@ -101,14 +101,14 @@ def process_db_parallel(base_dir, th=0.11):
 
         def next(self):
             imname = self.get_valid_name()
-            print "%d of %d"%(self.i+1,self.N)
+            print("%d of %d"%(self.i+1,self.N))
             ucm = self.ucm_h5[self.ucm_h5['ucms'][0,self.i]][:]
             ucm = ucm.copy()
             self.i += 1
             return ((ucm>self.th).astype('uint8'),imname)
 
     ucm_iter = ucm_iterable(db_path,th)
-    print "cpu count: ", mp.cpu_count()
+    print("cpu count: ", mp.cpu_count())
     parpool = mp.Pool(4)
     ucm_result = parpool.imap_unordered(get_mask_parallel, ucm_iter, chunksize=1)
 
@@ -116,17 +116,17 @@ def process_db_parallel(base_dir, th=0.11):
         if res is None:
             continue
         ((mask,area,label),imname) = res
-        print "got back : ", imname
+        print("got back : ", imname)
         mask = mask.astype('uint16')
         mask_dset = dbo_mask.create_dataset(imname, data=mask)
         mask_dset.attrs['area'] = area
         mask_dset.attrs['label'] = label
 
     # close the h5 files:
-    print "closing DB"
+    print("closing DB")
     dbo.close()
-    print ">>>> DONE"
+    print(">>>> DONE")
 
 
-base_dir = '/home/' # directory containing the ucm.mat, i.e., output of run_ucm.m
-process_db_parallel(base_dir)
+#base_dir = '/home/' # directory containing the ucm.mat, i.e., output of run_ucm.m
+#process_db_parallel(base_dir)

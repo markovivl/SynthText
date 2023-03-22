@@ -99,15 +99,38 @@ def blit_images(im_top,im_back,scale_grad=1.0,mode='max'):
     im_res = np.zeros_like(im_top)
 
     # frac of gradients which come from source:
-    for ch in xrange(im_top.shape[2]):
+    for ch in range(im_top.shape[2]):
         ims = im_top[:,:,ch]
         imd = im_back[:,:,ch]
 
         [gxs,gys] = get_grads(ims)
         [gxd,gyd] = get_grads(imd)
+        
+#         if np.sum(gxd) == 0:
+#             gxs *= scale_grad * 3
+#             gys *= scale_grad * 3
+#         else:
+        gxs *= scale_grad 
+        gys *= scale_grad 
+        
+        if scale_grad == 1:
+            gxs *= 1.3
+            gys *= 1.3
 
-        gxs *= scale_grad
-        gys *= scale_grad
+        if scale_grad == 1:
+            if np.mean(np.abs(gxd)[np.abs(gxd) > 5]) > 20:
+                gxd *= 0.9
+                gyd *= 0.9
+                gxs *= 2.5
+                gys *= 3
+            if np.mean(np.abs(gxd)[np.abs(gxd) > 5]) > 14:
+                gxd *= 0.9
+                gyd *= 0.9
+                gxs *= 1.8
+                gys *= 1.8
+            else:
+                gxd *= 0.9
+                gyd *= 0.9
 
         gxs_idx = gxs!=0
         gys_idx = gys!=0
@@ -203,7 +226,7 @@ if __name__=='__main__':
 
     # plt.imshow(im_alpha_L)
     # plt.show()
-    for i in xrange(500,im_alpha_L.shape[1],5):
+    for i in range(500,im_alpha_L.shape[1],5):
         l_actual = im_actual_L[i,:]#-im_actual_L[i,:-1]
         l_alpha = im_alpha_L[i,:]#-im_alpha_L[i,:-1]
         l_poisson = im_poisson_L[i,:]#-im_poisson_L[i,:-1]
@@ -212,7 +235,6 @@ if __name__=='__main__':
         with sns.axes_style("darkgrid"):
             plt.subplot(2,1,2)
             plt.plot(l_alpha,label='alpha')
-            plt.hold(True)
             plt.plot(l_poisson,label='poisson')
             plt.plot(l_actual,label='actual')
             plt.legend()
@@ -227,7 +249,6 @@ if __name__=='__main__':
         with sns.axes_style("white"):
             plt.subplot(2,1,1)
             plt.imshow(im_alpha[:,:,::-1].astype('uint8'))
-            plt.hold(True)
             plt.plot([0,im_alpha_L.shape[0]-1],[i,i],'r')
             plt.axis('image')
             plt.show()

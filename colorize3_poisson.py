@@ -6,11 +6,12 @@ import scipy.ndimage as scim
 import scipy.ndimage.interpolation as sii
 import os
 import os.path as osp
-import cPickle as cp
+#import cPickle as cp
+import _pickle as cp
 #import Image
 from PIL import Image
 from poisson_reconstruct import blit_images
-
+import pickle
 
 def sample_weighted(p_dict):
     ps = p_dict.keys()
@@ -38,14 +39,18 @@ class Layer(object):
         elif color.ndim==3: #rgb image
             self.color = color.copy().astype('uint8')
         else:
-            print color.shape
+            print (color.shape)
             raise Exception("color datatype not understood")
 
 class FontColor(object):
 
     def __init__(self, col_file):
-        with open(col_file,'r') as f:
-            self.colorsRGB = cp.load(f)
+        with open(col_file,'rb') as f:
+            #self.colorsRGB = cp.load(f)
+            u = pickle._Unpickler(f)
+            u.encoding = 'latin1'
+            p = u.load()
+            self.colorsRGB = p
         self.ncol = self.colorsRGB.shape[0]
 
         # convert color-means from RGB to LAB for better nearest neighbour
@@ -145,10 +150,10 @@ class Colorize(object):
         self.font_color = FontColor(col_file=osp.join(model_dir,'models/colors_new.cp'))
 
         # probabilities of different text-effects:
-        self.p_bevel = 0.05 # add bevel effect to text
+        self.p_bevel = 0.05# add bevel effect to text
         self.p_outline = 0.05 # just keep the outline of the text
-        self.p_drop_shadow = 0.15
-        self.p_border = 0.15
+        self.p_drop_shadow = 0
+        self.p_border = 0.2
         self.p_displacement = 0.30 # add background-based bump-mapping
         self.p_texture = 0.0 # use an image for coloring text
 
@@ -301,6 +306,19 @@ class Colorize(object):
         bg_col,fg_col,i = 0,0,0
         fg_col,bg_col = self.font_color.sample_from_data(bg_arr)
         return Layer(alpha=text_arr, color=fg_col), fg_col, bg_col
+    
+    
+    def get_text_color(self, l_text, l_out):
+        """
+        Get text color on the final image.
+            l_text : text layer object
+            l_out : final img layer object
+        """
+        text_mask = cv.erode(l_text.alpha, kernel=np.ones((2, 2), np.uint8)).astype(bool)
+        text_rgb = np.mean(l_out[text_mask], axis=0).astype(int)
+        text_code = '%02x%02x%02x' % tuple(text_rgb)
+        return text_code
+        
 
 
     def process(self, text_arr, bg_arr, min_h):
@@ -316,7 +334,7 @@ class Colorize(object):
         bg_col = np.mean(np.mean(bg_arr,axis=0),axis=0)
         l_bg = Layer(alpha=255*np.ones_like(text_arr,'uint8'),color=bg_col)
 
-        l_text.alpha = l_text.alpha * np.clip(0.88 + 0.1*np.random.randn(), 0.72, 1.0)
+        #l_text.alpha = l_text.alpha * np.clip(0.88 + 0.1*np.random.randn(), 0.72, 1.0)
         layers = [l_text]
         blends = []
 
@@ -362,6 +380,7 @@ class Colorize(object):
         l_bg = Layer(alpha=255*np.ones_like(text_arr,'uint8'), color=bg_arr)
         l_out =  blit_images(l_normal.color,l_bg.color.copy())
         
+        
         # plt.subplot(1,3,1)
         # plt.imshow(l_normal.color)
         # plt.subplot(1,3,2)
@@ -375,9 +394,11 @@ class Colorize(object):
             # imperceptible text. In this case,
             # just do a normal blend:
             layers[-1] = l_bg
-            return self.merge_down(layers,blends).color
+            l_out = self.merge_down(layers,blends).color
+        
+        text_color = self.get_text_color(l_text, l_out)
 
-        return l_out
+        return l_out, text_color
 
 
     def check_perceptible(self, txt_mask, bg, txt_bg):
@@ -402,7 +423,7 @@ class Colorize(object):
 
         diff = np.linalg.norm(bg_px-txt_px,ord=None,axis=1)
         diff = np.percentile(diff,[10,30,50,70,90])
-        print "color diff percentile :", diff
+        print ("color diff percentile :", diff)
         return diff, (bgo,txto)
 
     def color(self, bg_arr, text_arr, hs, place_order=None, pad=20):
@@ -425,9 +446,10 @@ class Colorize(object):
 
         # initialize the placement order:
         if place_order is None:
-            place_order = np.array(xrange(len(text_arr)))
+            place_order = np.array(range(len(text_arr)))
 
         rendered = []
+        colors = []
         for i in place_order[::-1]:
             # get the "location" of the text in the image:
             ## this is the minimum x and y coordinates of text:
@@ -449,12 +471,13 @@ class Colorize(object):
             w,h = text_patch.shape
             bg = bg_arr[l[0]:l[0]+w,l[1]:l[1]+h,:]
 
-            rdr0 = self.process(text_patch, bg, hs[i])
+            rdr0, text_color = self.process(text_patch, bg, hs[i])
             rendered.append(rdr0)
+            colors.append(text_color)
 
             bg_arr[l[0]:l[0]+w,l[1]:l[1]+h,:] = rdr0#rendered[-1]
 
 
-            return bg_arr
+            return bg_arr, colors
 
-        return bg_arr
+        return bg_arr, colors

@@ -21,6 +21,7 @@ import text_utils as tu
 from colorize3_poisson import Colorize
 from common import *
 import traceback, itertools
+import transformations
 
 
 class TextRegions(object):
@@ -28,11 +29,11 @@ class TextRegions(object):
     Get region from segmentation which are good for placing
     text.
     """
-    minWidth = 30 #px
-    minHeight = 30 #px
+    minWidth = 150 #100 #30 #px
+    minHeight = 150 #100 #30 #px
     minAspect = 0.3 # w > 0.3*h
     maxAspect = 7
-    minArea = 100 # number of pix
+    minArea = 22500 #6000 #200 #100 # number of pix
     pArea = 0.60 # area_obj/area_minrect >= 0.6
 
     # RANSAC planar fitting params:
@@ -78,20 +79,21 @@ class TextRegions(object):
 
             coords = np.c_[xs,ys].astype('float32')
             rect = cv2.minAreaRect(coords)          
+            #box = np.array(cv2.cv.BoxPoints(rect))
             box = np.array(cv2.boxPoints(rect))
             h,w,rot = TextRegions.get_hw(box,return_rot=True)
 
             f = (h > TextRegions.minHeight 
                 and w > TextRegions.minWidth
                 and TextRegions.minAspect < w/h < TextRegions.maxAspect
-                and area[idx]/(w*h) > TextRegions.pArea)
+                and area[idx]/w*h > TextRegions.pArea)
             filt.append(f)
             R.append(rot)
 
         # filter bad regions:
         filt = np.array(filt)
         area = area[filt]
-        R = [R[i] for i in xrange(len(R)) if filt[i]]
+        R = [R[i] for i in range(len(R)) if filt[i]]
 
         # sort the regions based on areas:
         aidx = np.argsort(-area)
@@ -111,8 +113,12 @@ class TextRegions(object):
 
         y_m,x_m = np.where(mask)
         mask_idx = np.zeros_like(mask,'int32')
-        for i in xrange(len(y_m)):
-            mask_idx[y_m[i],x_m[i]] = i
+        ara = np.arange(len(y_m), dtype='int32')
+        
+        mask_idx[y_m[ara],
+         x_m[ara]] = ara
+#         for i in range(len(y_m)):
+#             mask_idx[y_m[i],x_m[i]] = i
 
         xp,xn = np.zeros_like(mask), np.zeros_like(mask)
         yp,yn = np.zeros_like(mask), np.zeros_like(mask)
@@ -136,8 +142,11 @@ class TextRegions(object):
         Y = np.transpose(np.c_[ys,ys+s,ys-s,ys+s,ys-s][:,:,None],(1,2,0))
         sample_idx = np.concatenate([Y,X],axis=1)
         mask_nn_idx = np.zeros((5,sample_idx.shape[-1]),'int32')
-        for i in xrange(sample_idx.shape[-1]):
-            mask_nn_idx[:,i] = mask_idx[sample_idx[:,:,i][:,0],sample_idx[:,:,i][:,1]]
+        ara2 = np.arange(sample_idx.shape[-1], dtype='int32')
+#         for i in range(sample_idx.shape[-1]):
+#             mask_nn_idx[:,i] = mask_idx[sample_idx[:,:,i][:,0],sample_idx[:,:,i][:,1]]
+        mask_nn_idx[:, ara2] = mask_idx[sample_idx[:, :,ara2][:,0], 
+                                       sample_idx[:,:,ara2][:,1]]
         return mask_nn_idx
 
     @staticmethod
@@ -215,7 +224,9 @@ def get_text_placement_mask(xyz,mask,plane,pad=2,viz=False):
     REGION : DICT output of TextRegions.get_regions
     PAD : number of pixels to pad the placement-mask by
     """
-    _, contour, hier = cv2.findContours(mask.copy().astype('uint8'), mode=cv2.RETR_CCOMP, method=cv2.CHAIN_APPROX_SIMPLE)
+    contour,hier = cv2.findContours(mask.copy().astype('uint8'),
+                                    mode=cv2.RETR_CCOMP,
+                                    method=cv2.CHAIN_APPROX_SIMPLE)
     contour = [np.squeeze(c).astype('float') for c in contour]
     #plane = np.array([plane[1],plane[0],plane[2],plane[3]])
     H,W = mask.shape[:2]
@@ -224,7 +235,7 @@ def get_text_placement_mask(xyz,mask,plane,pad=2,viz=False):
     pts,pts_fp = [],[]
     center = np.array([W,H])/2
     n_front = np.array([0.0,0.0,-1.0])
-    for i in xrange(len(contour)):
+    for i in range(len(contour)):
         cnt_ij = contour[i]
         xyz = su.DepthCamera.plane2xyz(center, cnt_ij, plane)
         R = su.rot3d(plane[:3],n_front)
@@ -246,7 +257,7 @@ def get_text_placement_mask(xyz,mask,plane,pad=2,viz=False):
     # the same scale as the target region:
     s = rescale_frontoparallel(pts_tmp,boxR,pts[0])
     boxR *= s
-    for i in xrange(len(pts_fp)):
+    for i in range(len(pts_fp)):
         pts_fp[i] = s*((pts_fp[i]-mu[None,:]).dot(R2d.T) + mu[None,:])
 
     # paint the unrotated contour points:
@@ -256,7 +267,7 @@ def get_text_placement_mask(xyz,mask,plane,pad=2,viz=False):
 
     place_mask = 255*np.ones((int(np.ceil(COL))+pad, int(np.ceil(ROW))+pad), 'uint8')
 
-    pts_fp_i32 = [(pts_fp[i]+minxy[None,:]).astype('int32') for i in xrange(len(pts_fp))]
+    pts_fp_i32 = [(pts_fp[i]+minxy[None,:]).astype('int32') for i in range(len(pts_fp))]
     cv2.drawContours(place_mask,pts_fp_i32,-1,0,
                      thickness=cv2.FILLED,
                      lineType=8,hierarchy=hier)
@@ -277,8 +288,7 @@ def get_text_placement_mask(xyz,mask,plane,pad=2,viz=False):
         plt.imshow(mask)
         plt.subplot(1,2,2)
         plt.imshow(~place_mask)
-        plt.hold(True)
-        for i in xrange(len(pts_fp_i32)):
+        for i in range(len(pts_fp_i32)):
             plt.scatter(pts_fp_i32[i][:,0],pts_fp_i32[i][:,1],
                         edgecolors='none',facecolor='g',alpha=0.5)
         plt.show()
@@ -316,7 +326,7 @@ def viz_masks(fignum,rgb,seg,depth,label):
     plt.close(fignum)
     plt.figure(fignum)
     ims = [rgb,mim,depth,img]
-    for i in xrange(len(ims)):
+    for i in range(len(ims)):
         plt.subplot(2,2,i+1)
         plt.imshow(ims[i])
     plt.show(block=False)
@@ -347,12 +357,11 @@ def viz_textbb(fignum,text_im, bb_list,alpha=1.0):
     plt.close(fignum)
     plt.figure(fignum)
     plt.imshow(text_im)
-    plt.hold(True)
     H,W = text_im.shape[:2]
-    for i in xrange(len(bb_list)):
+    for i in range(len(bb_list)):
         bbs = bb_list[i]
         ni = bbs.shape[-1]
-        for j in xrange(ni):
+        for j in range(ni):
             bb = bbs[:,:,j]
             bb = np.c_[bb,bb[:,0]]
             plt.plot(bb[0,:], bb[1,:], 'r', linewidth=2, alpha=alpha)
@@ -366,8 +375,12 @@ class RendererV3(object):
         self.text_renderer = tu.RenderFont(data_dir)
         self.colorizer = Colorize(data_dir)
         #self.colorizerV2 = colorV2.Colorize(data_dir)
+        
+        # text transformations
+        self.p_sin = 0.3
+        self.p_circle = 0
 
-        self.min_char_height = 8 #px
+        self.min_char_height = 10 #px
         self.min_asp_ratio = 0.4 #
 
         self.max_text_regions = 7
@@ -447,6 +460,10 @@ class RendererV3(object):
         h = np.linalg.norm(bb[:,3,:] - bb[:,0,:], axis=0)
         w = np.linalg.norm(bb[:,1,:] - bb[:,0,:], axis=0)
         hw = np.c_[h,w]
+        
+        algebraic_h = bb[1, 3, :] - bb[1, 0, :]
+        algebraic_w = bb[0, 1, :] - bb[0, 0, :]
+        algebraic_hw = np.c_[algebraic_h, algebraic_w]
 
         # remove newlines and spaces:
         text = ''.join(text.split())
@@ -459,11 +476,26 @@ class RendererV3(object):
         min_h0, min_h = np.min(hw0[:,0]), np.min(hw[:,0])
         asp0, asp = hw0[:,0]/hw0[:,1], hw[:,0]/hw[:,1]
         asp0, asp = np.median(asp0), np.median(asp)
+        
+        edge_cond = np.any((abs(bb[1, 0, :] - bb[1, 3, :]) < 5) * ((bb[0, 0, :] - bb[0, 3, :]) > 30))
+        
+        x1, x2 = bb[0, 0, 0], bb[0, 0, 1]
+
+        y1, y2 = bb[1, 0, 0], bb[1, 0, 1]
+
+        dist = np.linalg.norm(np.array([x2, y2] - np.array([x1, y1])))
+        angle = np.arccos(abs((x2 - x1)/dist)) * 57.3
+        angle_cond = (angle > 60)
+        #angle_cond = False
 
         asp_ratio = asp/asp0
         is_good = ( min_h > self.min_char_height
                     and asp_ratio > self.min_asp_ratio
-                    and asp_ratio < 1.0/self.min_asp_ratio)
+                    and asp_ratio < 1.0/self.min_asp_ratio
+                    and not np.any(algebraic_hw < 0)
+                    and not edge_cond
+                    and not angle_cond
+                  )
         return is_good
 
 
@@ -492,15 +524,44 @@ class RendererV3(object):
             ksz = 5
         return cv2.GaussianBlur(text_mask,(ksz,ksz),bsz)
 
+    
+    def transform_text(self, text_mask, bb, text):        
+        if np.random.uniform() < self.p_sin:
+            new_text = text.strip().split()[0]
+            num_words = len(text.strip().split())
+            scale_f = 1#1.7 * (0.8 ** num_words)
+            new_bb = bb[:, :, :len(new_text)]
+            wordbb = self.char2wordBB(bb, new_text)
+            cut_mask, x_coords, y_coords = transformations.cut_word(0, wordbb, text_mask)
+            d = np.random.uniform(0, 2)
+            angle = np.random.randint(-30, 30)
+            sshape, ttshape = transformations.sin_transform(cut_mask, x_coords, y_coords, d=d)
+            new_img, splines = transformations.spline_transform(sshape, ttshape, cut_mask)
+#             new_text_mask = transformations.rotate_and_scale(ttshape, new_img,
+#                                                              angle=angle, scale_f=scale_f)
+            new_bb = transformations.transform_charbb(new_bb, splines)
+            new_text_mask = new_img
+        else:
+            new_text_mask = text_mask
+            new_bb = bb
+            new_text = text
+       
+        return new_text_mask, new_bb, new_text
+
+    
     def place_text(self,rgb,collision_mask,H,Hinv):
         font = self.text_renderer.font_state.sample()
         font = self.text_renderer.font_state.init_font(font)
 
         render_res = self.text_renderer.render_sample(font,collision_mask)
+        
         if render_res is None: # rendering not successful
             return #None
         else:
             text_mask,loc,bb,text = render_res
+            
+        text_mask, bb, text = self.transform_text(text_mask, bb, text)
+        text_mask = text_mask.astype(np.uint8)
 
         # update the collision mask with text:
         collision_mask += (255 * (text_mask>0)).astype('uint8')
@@ -521,9 +582,9 @@ class RendererV3(object):
         #feathering:
         text_mask = self.feather(text_mask, min_h)
 
-        im_final = self.colorizer.color(rgb,[text_mask],np.array([min_h]))
+        im_final, text_colors = self.colorizer.color(rgb,[text_mask],np.array([min_h]))
 
-        return im_final, text, bb, collision_mask
+        return im_final, text, bb, collision_mask, text_mask, text_colors
 
 
     def get_num_text_regions(self, nregions):
@@ -550,7 +611,7 @@ class RendererV3(object):
         bb_idx = np.r_[0, np.cumsum([len(w) for w in wrds])]
         wordBB = np.zeros((2,4,len(wrds)), 'float32')
         
-        for i in xrange(len(wrds)):
+        for i in range(len(wrds)):
             cc = charBB[:,:,bb_idx[i]:bb_idx[i+1]]
 
             # fit a rotated-rectangle:
@@ -568,7 +629,7 @@ class RendererV3(object):
                             cc[3,:]].T
             perm4 = np.array(list(itertools.permutations(np.arange(4))))
             dists = []
-            for pidx in xrange(perm4.shape[0]):
+            for pidx in range(perm4.shape[0]):
                 d = np.sum(np.linalg.norm(box[perm4[pidx],:]-cc_tblr,axis=1))
                 dists.append(d)
             wordBB[:,:,i] = box[perm4[np.argmin(dists)],:].T
@@ -624,10 +685,10 @@ class RendererV3(object):
             return []
 
         res = []
-        for i in xrange(ninstance):
+        for i in range(ninstance):
             place_masks = copy.deepcopy(regions['place_mask'])
 
-            print colorize(Color.CYAN, " ** instance # : %d"%i)
+            #print (colorize(Color.CYAN, " ** instance # : %d"%i))
 
             idict = {'img':[], 'charBB':None, 'wordBB':None, 'txt':None}
 
@@ -640,10 +701,13 @@ class RendererV3(object):
             img = rgb.copy()
             itext = []
             ibb = []
+            masks = []
+            colors = []
+#             fontnames = []
 
             # process regions: 
             num_txt_regions = len(reg_idx)
-            NUM_REP = 5 # re-use each region three times:
+            NUM_REP = 1 # re-use each region three times:
             reg_range = np.arange(NUM_REP * num_txt_regions) % num_txt_regions
             for idx in reg_range:
                 ireg = reg_idx[idx]
@@ -657,8 +721,8 @@ class RendererV3(object):
                             txt_render_res = self.place_text(img,place_masks[ireg],
                                                              regions['homography'][ireg],
                                                              regions['homography_inv'][ireg])
-                except TimeoutException, msg:
-                    print msg
+                except TimeoutException as msg:
+                    print (msg)
                     continue
                 except:
                     traceback.print_exc()
@@ -667,19 +731,26 @@ class RendererV3(object):
 
                 if txt_render_res is not None:
                     placed = True
-                    img,text,bb,collision_mask = txt_render_res
+                    img,text,bb,collision_mask, text_mask, text_color = txt_render_res
                     # update the region collision mask:
                     place_masks[ireg] = collision_mask
                     # store the result:
                     itext.append(text)
                     ibb.append(bb)
+                    masks.append(text_mask)
+                    colors.append(text_color)
+#                     fontnames.append(font_name)
 
             if  placed:
                 # at least 1 word was placed in this instance:
+                final_seg = transformations.get_text_seg(sum(masks))
+                idict['seg'] = final_seg
                 idict['img'] = img
                 idict['txt'] = itext
                 idict['charBB'] = np.concatenate(ibb, axis=2)
                 idict['wordBB'] = self.char2wordBB(idict['charBB'].copy(), ' '.join(itext))
+                idict['color'] = colors
+#                 idict['fontnames'] = fontnames
                 res.append(idict.copy())
                 if viz:
                     viz_textbb(1,img, [idict['wordBB']], alpha=1.0)

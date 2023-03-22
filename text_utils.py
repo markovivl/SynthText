@@ -5,7 +5,9 @@ import scipy.io as sio
 import os.path as osp
 import random, os
 import cv2
-import cPickle as cp
+import pandas as pd
+#import cPickle as cp
+import _pickle as cp
 import scipy.signal as ssig
 import scipy.stats as sstat
 import pygame, pygame.locals
@@ -14,10 +16,10 @@ from pygame import freetype
 from PIL import Image
 import math
 from common import *
-
+import pickle
 
 def sample_weighted(p_dict):
-    ps = p_dict.keys()
+    ps = list(p_dict.keys())
     return p_dict[np.random.choice(ps,p=ps)]
 
 def move_bb(bbs, t):
@@ -45,7 +47,7 @@ def crop_safe(arr, rect, bbs=[], pad=0):
     v1 = [min(arr.shape[0], rect[0]+rect[2]), min(arr.shape[1], rect[1]+rect[3])]
     arr = arr[v0[0]:v1[0],v0[1]:v1[1],...]
     if len(bbs) > 0:
-        for i in xrange(len(bbs)):
+        for i in range(len(bbs)):
             bbs[i,0] -= v0[0]
             bbs[i,1] -= v0[1]
         return arr, bbs
@@ -91,9 +93,9 @@ class RenderFont(object):
         self.max_shrink_trials = 5 # 0.9^5 ~= 0.6
         # the minimum number of characters that should fit in a mask
         # to define the maximum font height.
-        self.min_nchar = 2
-        self.min_font_h = 16 #px : 0.6*12 ~ 7px <= actual minimum height
-        self.max_font_h = 120 #px
+        self.min_nchar = 3
+        self.min_font_h = 44 #34 #24 #16 #16 #px : 0.6*12 ~ 7px <= actual minimum height
+        self.max_font_h = 70 #60 #50 #60 #120 #px
         self.p_flat = 0.10
 
         # curved baseline:
@@ -102,7 +104,7 @@ class RenderFont(object):
 
         # text-source : gets english text:
         self.text_source = TextSource(min_nchar=self.min_nchar,
-                                      fn=osp.join(data_dir,'newsgroup/newsgroup.txt'))
+                                      fn=osp.join(data_dir,'newsgroup/uniform.csv'))
 
         # get font-state object:
         self.font_state = FontState(data_dir)
@@ -182,9 +184,9 @@ class RenderFont(object):
         # baseline state
         mid_idx = wl//2
         BS = self.baselinestate.get_sample()
-        curve = [BS['curve'](i-mid_idx) for i in xrange(wl)]
+        curve = [BS['curve'](i-mid_idx) for i in range(wl)]
         curve[mid_idx] = -np.sum(curve) / (wl-1)
-        rots  = [-int(math.degrees(math.atan(BS['diff'](i-mid_idx)/(font.size/2)))) for i in xrange(wl)]
+        rots  = [-int(math.degrees(math.atan(BS['diff'](i-mid_idx)/(font.size/2)))) for i in range(wl)]
 
         bbs = []
         # place middle char
@@ -200,7 +202,7 @@ class RenderFont(object):
         # render chars to the left and right:
         last_rect = rect
         ch_idx = []
-        for i in xrange(wl):
+        for i in range(wl):
             #skip the middle character
             if i==mid_idx: 
                 bbs.append(mid_ch_bb)
@@ -312,7 +314,7 @@ class RenderFont(object):
         """
         n,_ = bbs.shape
         coords = np.zeros((2,4,n))
-        for i in xrange(n):
+        for i in range(n):
             coords[:,:,i] = bbs[i,:2][:,None]
             coords[0,1,i] += bbs[i,2]
             coords[:,2,i] += bbs[i,2:4]
@@ -417,15 +419,23 @@ class FontState(object):
         font_model_path = osp.join(data_dir, 'models/font_px2pt.cp')
 
         # get character-frequencies in the English language:
-        with open(char_freq_path,'r') as f:
-            self.char_freq = cp.load(f)
+        with open(char_freq_path,'rb') as f:
+            #self.char_freq = cp.load(f)
+            u = pickle._Unpickler(f)
+            u.encoding = 'latin1'
+            p = u.load()
+            self.char_freq = p
 
         # get the model to convert from pixel to font pt size:
-        with open(font_model_path,'r') as f:
-            self.font_model = cp.load(f)
-
+        with open(font_model_path,'rb') as f:
+            #self.font_model = cp.load(f)
+            u = pickle._Unpickler(f)
+            u.encoding = 'latin1'
+            p = u.load()
+            self.font_model = p
+            
         # get the names of fonts to use:
-        self.FONT_LIST = osp.join(data_dir, 'fonts/fontlist.txt')
+        self.FONT_LIST = osp.join(data_dir, 'fonts/new_fontlist.txt')
         self.fonts = [os.path.join(data_dir,'fonts',f.strip()) for f in open(self.FONT_LIST)]
 
 
@@ -441,7 +451,7 @@ class FontState(object):
         # get the [height,width] of each character:
         try:
             sizes = font.get_metrics(chars,size)
-            good_idx = [i for i in xrange(len(sizes)) if sizes[i] is not None]
+            good_idx = [i for i in range(len(sizes)) if sizes[i] is not None]
             sizes,w = [sizes[i] for i in good_idx], w[good_idx]
             sizes = np.array(sizes).astype('float')[:,[3,4]]        
             r = np.abs(sizes[:,1]/sizes[:,0]) # width/height
@@ -513,8 +523,14 @@ class TextSource(object):
                       'LINE':self.sample_line,
                       'PARA':self.sample_para}
 
-        with open(fn,'r') as f:
-            self.txt = [l.strip() for l in f.readlines()]
+        self.probabilites = None
+        if fn.split('.')[-1] == 'txt':
+            with open(fn,'r') as f:
+                self.txt = [l.strip() for l in f.readlines()]
+        elif fn.split('.')[-1] == 'csv':
+            self.csv = pd.read_csv(fn)
+            self.txt = list(self.csv['words'].values)
+            self.probabilities = self.csv['probabilities'].values
 
         # distribution over line/words for LINE/PARA:
         self.p_line_nline = np.array([0.85, 0.10, 0.05])
@@ -559,7 +575,7 @@ class TextSource(object):
         """
         ls = [len(l) for l in lines]
         max_l = max(ls)
-        for i in xrange(len(lines)):
+        for i in range(len(lines)):
             l = lines[i].strip()
             dl = max_l-ls[i]
             lspace = dl//2
@@ -571,11 +587,19 @@ class TextSource(object):
         def h_lines(niter=100):
             lines = ['']
             iter = 0
-            while not np.all(self.is_good(lines,f)) and iter < niter:
-                iter += 1
-                line_start = np.random.choice(len(self.txt)-nline)
-                lines = [self.txt[line_start+i] for i in range(nline)]
-            return lines
+            if self.probabilities is not None:
+                niter = 10
+                while not np.all(self.is_good(lines,f)) and iter < niter:
+                    iter += 1
+                    lines = np.random.choice(self.txt, (nline, max(nword)), p=self.probabilities)
+                    lines = [' '.join(line) for line in lines]
+                return lines
+            else:
+                while not np.all(self.is_good(lines,f)) and iter < niter:
+                    iter += 1
+                    line_start = np.random.choice(len(self.txt)-nline)
+                    lines = [self.txt[line_start+i] for i in range(nline)]
+                return lines
 
         lines = ['']
         iter = 0
@@ -603,7 +627,20 @@ class TextSource(object):
             return lines
 
     def sample(self, nline_max,nchar_max,kind='WORD'):
-        return self.fdict[kind](nline_max,nchar_max)
+        return_text = self.fdict[kind](nline_max,nchar_max)
+        if isinstance(return_text, str):
+            extra_symbols = '(.,?!:;-)'
+            return_text = return_text.split('\n')
+            new_words = []
+            for word in return_text:
+                if np.random.uniform() < 0.1:
+                    new_words.append(word + random.choice(extra_symbols))
+                else:
+                    new_words.append(word)
+            return_text = '\n'.join(new_words)
+            if np.random.uniform() < 0.1 and return_text[-1] not in extra_symbols:
+                return_text = return_text + random.choice(extra_symbols)
+        return return_text
         
     def sample_word(self,nline_max,nchar_max,niter=100):
         rand_line = self.txt[np.random.choice(len(self.txt))]                
@@ -630,7 +667,7 @@ class TextSource(object):
 
         # get number of words:
         nword = [self.p_line_nword[2]*sstat.beta.rvs(a=self.p_line_nword[0], b=self.p_line_nword[1])
-                 for _ in xrange(nline)]
+                 for _ in range(nline)]
         nword = [max(1,int(np.ceil(n))) for n in nword]
 
         lines = self.get_lines(nline, nword, nchar_max, f=0.35)
@@ -643,10 +680,12 @@ class TextSource(object):
         # get number of lines in the paragraph:
         nline = nline_max*sstat.beta.rvs(a=self.p_para_nline[0], b=self.p_para_nline[1])
         nline = max(1, int(np.ceil(nline)))
+        if nline > 3:
+            nline = min(np.random.randint(2, 6), int(np.ceil(nline)))
 
         # get number of words:
         nword = [self.p_para_nword[2]*sstat.beta.rvs(a=self.p_para_nword[0], b=self.p_para_nword[1])
-                 for _ in xrange(nline)]
+                 for _ in range(nline)]
         nword = [max(1,int(np.ceil(n))) for n in nword]
 
         lines = self.get_lines(nline, nword, nchar_max, f=0.35)
