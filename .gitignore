@@ -69,7 +69,6 @@ target/
 
 # IPython Notebook
 .ipynb_checkpoints
-
 # pyenv
 .python-version
 
@@ -88,3 +87,7 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# Images, segmentations, depths
+datasets/
+

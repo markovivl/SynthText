@@ -1,14 +1,21 @@
 import cv2
+import os
 import numpy as np
 import higra as hg
 from copy import deepcopy
+import subprocess
 
 
 import urllib.request as request; exec(request.urlopen('https://github.com/higra/Higra-Notebooks/raw/master/utils.py').read(), globals())
 
+# please change the paths below to full paths from root
+# as it will not work that way
+TXT_PATH = './deploy.prototxt' 
+MODEL_PATH = './COB_PASCALContext_trainval.caffemodel'
 
-TXT_PATH = 'deploy.prototxt'
-MODEL_PATH = 'COB_PASCALContext_trainval.caffemodel'
+if not os.path.exists(MODEL_PATH):
+    subprocess.run(['wget', 'https://data.vision.ee.ethz.ch/kmaninis/share/COB/Downloads/COB_PASCALContext_trainval.zip'])
+    subprocess.run(['unzip', './COB_PASCALContext_trainval.zip'])
 
 
 

@@ -22,12 +22,12 @@ from pycocotools import mask
 from skimage import measure
 from itertools import groupby
 
-PRECOMP_PATH = './datasets/detection/'
-DICT_PATH = './datasets/detection/blurred_dict.json'
+PRECOMP_PATH = './datasets'
+DICT_PATH = './datasets/blurred_dict.json'
 
-CHUNK = 1350
-NUM_STAGES = 20
-NUM_WORKERS = 10
+CHUNK = 10
+NUM_STAGES = 1
+NUM_WORKERS = 1
 
 parser = argparse.ArgumentParser()
 
@@ -66,17 +66,17 @@ def main(curr_part, curr_worker):
     for stage in range(NUM_STAGES):
         part_start = WORKER * CHUNK * NUM_STAGES + CHUNK * stage
         part_end = WORKER * CHUNK * NUM_STAGES + CHUNK * (stage + 1)
-        names = [item[item.find('l'):-4] for item in os.listdir(os.path.join(PRECOMP_PATH,
-                                                                             f'seg_in/seg_{PART}'))][part_start:part_end]
+        names = [item[item.find('c'):-4] for item in os.listdir(os.path.join(PRECOMP_PATH,
+                                                                             f'seg_in/'))][part_start:part_end]
         img_paths = [blur_dict[name] for name in names]
         
         test_seg = []
         for i in tqdm(range(len(names)), desc='input segs'):
-            test_seg.append(sio.loadmat(f'{PRECOMP_PATH}seg_in/seg_{PART}/{names[i]}.mat'))
+            test_seg.append(sio.loadmat(f'{PRECOMP_PATH}seg_in/{names[i]}.mat'))
         
         test_dep = []
         for i in tqdm(range(len(names)), desc='input deps'):
-            test_dep.append(sio.loadmat(f'{PRECOMP_PATH}dep_in/dep_{PART}/{names[i]}.mat'))
+            test_dep.append(sio.loadmat(f'{PRECOMP_PATH}dep_in/{names[i]}.mat'))
             
         test_imgs = []
         for i in tqdm(range(len(img_paths)), desc='input_imgs'):
@@ -125,7 +125,7 @@ def main(curr_part, curr_worker):
                 kek = Image.fromarray(elem[0]['img'])
                 new_seg = binary_mask_to_rle(elem[0]['seg'])
                 
-                kek.save(.save(f'{PRECOMP_PATH}img_out/img_{PART}/{imnames[i]}.jpg'))
+                kek.save(f'{PRECOMP_PATH}img_out/{imnames[i]}.jpg')
 
                 new_dict = {}
                 new_dict['seg'] = new_seg
@@ -137,8 +137,7 @@ def main(curr_part, curr_worker):
                 print(f'error in {i}th image')
                 
         json_data = {k:v for k, v in zip(imnames, data_dicts)}
-        file_path = f'{PRECOMP_PATH}jsons/json_{PART}/json_{WORKER}_{stage}.json'
-        print(stage)
+        file_path = f'{PRECOMP_PATH}jsons/json_{WORKER}_{stage}.json'
         json.dump(json_data, codecs.open(file_path, 'w', encoding='utf-8'), 
           separators=(',', ':'), 
           sort_keys=True, 

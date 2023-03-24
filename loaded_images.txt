@@ -1,8 +1,0 @@
-./datasets/blur_test/COCO_test2014_000000581700.jpg
-./datasets/blur_test/COCO_test2014_000000581706.jpg
-./datasets/blur_test/COCO_test2014_000000581727.jpg
-./datasets/blur_test/COCO_test2014_000000581763.jpg
-./datasets/blur_test/COCO_test2014_000000581765.jpg
-./datasets/blur_test/COCO_test2014_000000581767.jpg
-./datasets/blur_test/COCO_test2014_000000581771.jpg
-./datasets/blur_test/COCO_test2014_000000581774.jpg
