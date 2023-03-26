@@ -7,7 +7,7 @@ import json
 BASE_URL = 'https://cloud-api.yandex.net/v1/disk/public/resources/download?'
 
 def download_json():
-    public_key = 'https://disk.yandex.ru/d/pCiQUJ_2bOSi8A'  # Сюда вписываете вашу ссылку
+    public_key = 'https://disk.yandex.ru/d/8oABHwurLBtrhA'  
     # get link
     final_url = BASE_URL + urlencode(dict(public_key=public_key))
     response = requests.get(final_url)
@@ -17,7 +17,7 @@ def download_json():
     download_response = requests.get(download_url)
     if not os.path.exists('./dataset'):
         os.mkdir('./dataset')
-    with open('./dataset/all_archives.json', 'wb') as f:   # Здесь укажите нужный путь к файлу
+    with open('./dataset/all_archives.json', 'wb') as f: 
         f.write(download_response.content)
 
         

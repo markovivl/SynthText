@@ -97,5 +97,9 @@
         "4_1":"https://disk.yandex.ru/d/3eOc8PgT6OSm3Q",
         "4_2":"https://disk.yandex.ru/d/UwJt-i4c8TS-9A",
         "4_4":"https://disk.yandex.ru/d/33QF57xOjCg5dg"
+    },
+    "real_data":{
+        "train":"https://disk.yandex.ru/d/Q-0jnflpC7BZBQ",
+        "test":"https://disk.yandex.ru/d/iu7e06_aodllmA"
     }
 }
