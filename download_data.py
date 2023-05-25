@@ -2,7 +2,11 @@ import requests
 from urllib.parse import urlencode
 import os
 import json
+from argparse import ArgumentParser
 
+parser = ArgumentParser()
+
+parser.add_argument('-s', '--split', required=True, help='Specify the split')
 
 BASE_URL = 'https://cloud-api.yandex.net/v1/disk/public/resources/download?'
 
